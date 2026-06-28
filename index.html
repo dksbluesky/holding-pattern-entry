@@ -538,7 +538,11 @@ function animateToStep(step) {
   const g = el('g', { id: 'animLayer' });
   svg.appendChild(g);
 
-  drawPlane(state, g);
+  // The approaching plane (at its original arrival position) only makes sense before the
+  // entry maneuver actually flies it away from there.
+  if (step < 3) {
+    drawPlane(state, g);
+  }
 
   if (step >= 0) {
     drawSectorLine1(state, g, step === 0);
@@ -557,6 +561,9 @@ function animateToStep(step) {
     const inboundFar = state.base.inboundFar;
     const fix = state.base.fix;
     g.appendChild(el('line', { x1: inboundFar.x, y1: inboundFar.y, x2: fix.x, y2: fix.y, stroke: '#34d399', 'stroke-width': 4, opacity: 0.9 }));
+    // Established: plane now sits at the fix, oriented along the inbound course.
+    const established = planeIconAt(fix.x, fix.y, state.inbound);
+    g.appendChild(established);
   }
 }
 
@@ -611,7 +618,11 @@ function drawEntryPath(state, g, animate) {
     });
 
     const movingPlane = el('g', { id: 'movingPlane' });
-    movingPlane.appendChild(el('path', { d: PLANE_PATH, fill: color, stroke: '#fff', 'stroke-width': 1.4, 'stroke-linejoin': 'round', transform: 'scale(1.8)' }));
+    // rotate=auto aligns the LOCAL +X axis with the path tangent, but our plane icon is drawn
+    // nose-up (facing -Y) — pre-rotate +90° so the nose lines up with the direction of travel.
+    const oriented = el('g', { transform: 'rotate(90) scale(1.8)' });
+    oriented.appendChild(el('path', { d: PLANE_PATH, fill: color, stroke: '#fff', 'stroke-width': 1.4, 'stroke-linejoin': 'round' }));
+    movingPlane.appendChild(oriented);
     const motion = el('animateMotion', { dur: '1.8s', repeatCount: '1', rotate: 'auto', fill: 'freeze', path: pathStr });
     movingPlane.appendChild(motion);
     g.appendChild(movingPlane);
