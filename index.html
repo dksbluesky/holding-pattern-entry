@@ -571,9 +571,14 @@ function buildEntryPathStr(state) {
   } else if (state.entryType === 'teardrop') {
     // Fly outbound on the teardrop track, then loop/turn back to intercept the inbound course —
     // drawn as a real curved loop (not a straight there-and-back) so it visibly reads as a teardrop shape.
-    const teardropTrack = norm360(state.outbound + 30 * turnSign);
-    const out = pointAt(fix.x, fix.y, teardropTrack, 115);
-    const loopControl = pointAt(out.x, out.y, norm360(teardropTrack + 100 * turnSign), 85);
+    // The protected/holding side sits at inbound + 90*turnSign (same convention used for the
+    // racetrack curve direction in drawBase). The teardrop offset must rotate FROM outbound
+    // TOWARD that side, which is the opposite sign: outbound − 30*turnSign, not + .
+    const teardropTrack = norm360(state.outbound - 30 * turnSign);
+    const out = pointAt(fix.x, fix.y, teardropTrack, 140);
+    // The curve's bulge direction is purely cosmetic (doesn't affect the procedural track) —
+    // swing it away from the racetrack outline so the loop stays visually distinct.
+    const loopControl = pointAt(out.x, out.y, norm360(teardropTrack + 110 * turnSign), 95);
     pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} Q ${loopControl.x} ${loopControl.y} ${fix.x} ${fix.y}`;
   } else { // parallel
     const out = pointAt(fix.x, fix.y, state.outbound, 105);
