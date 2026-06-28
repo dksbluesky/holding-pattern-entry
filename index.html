@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Holding Pattern Entry Visualizer</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0a2a5e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hold Entry">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    background: #f3f5f9;
+    color: #1f2937;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: clamp(12px, 4vw, 28px) 12px 60px;
+    width: 100%;
+  }
+  h1 { font-size: clamp(20px, 5vw, 28px); color: #0f172a; margin: 4px 0; letter-spacing: -0.5px; text-align: center; }
+  .sub { font-size: 11px; letter-spacing: 3px; color: #64748b; text-transform: uppercase; margin-bottom: 14px; text-align: center; }
+
+  .panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 10px rgba(15,23,42,0.06);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    width: 100%;
+    max-width: 760px;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+  .field { flex: 1; min-width: 140px; }
+  label { display: block; font-size: 11px; color: #64748b; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  input[type=number] {
+    width: 100%;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    color: #0f172a;
+    padding: 11px 10px;
+    font-family: inherit;
+    font-size: 16px;
+  }
+  input[type=number]:focus { outline: none; border-color: #f59e0b; }
+
+  .toggle-group { display: flex; gap: 8px; }
+  .toggle-btn {
+    flex: 1;
+    padding: 11px 8px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    text-align: center;
+    user-select: none;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .toggle-btn.active {
+    background: #f59e0b;
+    color: #fff;
+    border-color: #f59e0b;
+    font-weight: 700;
+  }
+
+  #startBtn {
+    width: 100%;
+    background: #f59e0b;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 0;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 1px;
+    min-height: 48px;
+  }
+  #startBtn:active { transform: scale(0.99); }
+  #startBtn:disabled { background: #cbd5e1; color: #fff; cursor: not-allowed; }
+
+  .chartwrap {
+    background: #0a2a5e;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px);
+    background-size: 20px 20px;
+    border: 2px solid #38bdf8;
+    border-radius: 16px;
+    padding: 8px;
+    margin-bottom: 16px;
+    width: 100%;
+    max-width: 760px;
+    box-shadow: 0 4px 18px rgba(15,23,42,0.18);
+  }
+  .chartwrap svg { display: block; width: 100%; height: auto; }
+
+  .info {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 10px rgba(15,23,42,0.06);
+    border-radius: 14px;
+    padding: 16px 22px;
+    max-width: 760px;
+    width: 100%;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .info .step-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  .info .step-desc { font-size: 14px; color: #475569; line-height: 1.6; }
+
+  .controls { display: flex; gap: 12px; margin-bottom: 8px; width: 100%; max-width: 560px; }
+  .controls button {
+    flex: 1;
+    background: #ffffff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 13px 0;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+    min-height: 46px;
+  }
+  .controls button:disabled { background: #f1f5f9; color: #b0b8c4; cursor: not-allowed; }
+
+  .stepcount { font-size: 11px; color: #94a3b8; }
+
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-top: 4px;
+    color: #fff;
+  }
+
+  @media (max-width: 420px) {
+    .row { flex-direction: column; align-items: stretch; }
+    .field { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sub">Aviation · Procedures</div>
+<h1>Holding Pattern Entry</h1>
+
+<div class="panel">
+  <div class="row">
+    <div class="field">
+      <label>Inbound Holding Course (°)</label>
+      <input type="number" id="inboundCourse" value="270" min="0" max="360" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label>Aircraft Arrival Bearing (°)</label>
+      <input type="number" id="arrivalBearing" value="180" min="0" max="360" inputmode="numeric">
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label>Pattern Type</label>
+      <div class="toggle-group">
+        <div class="toggle-btn active" data-group="pattern" data-value="standard">Standard (Right)</div>
+        <div class="toggle-btn" data-group="pattern" data-value="nonstandard">Non-Standard (Left)</div>
+      </div>
+    </div>
+  </div>
+  <button id="startBtn">▶ Start Animation</button>
+</div>
+
+<div class="chartwrap">
+  <svg id="svg" viewBox="0 0 720 600" preserveAspectRatio="xMidYMid meet"></svg>
+</div>
+
+<div class="info">
+  <div class="step-title" id="stepTitle">STEP 1 — Setup</div>
+  <div class="step-desc" id="stepDesc">Enter the holding course, your arrival bearing, and pattern type, then hit Start.</div>
+  <div id="resultBadge"></div>
+  <div id="formulaBox" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed #e2e8f0; text-align:left; font-size:12.5px; color:#475569; line-height:1.7; font-family:'Courier New',monospace;"></div>
+</div>
+
+<div class="controls">
+  <button id="backBtn" disabled>← Back</button>
+  <button id="nextBtn" disabled>Next →</button>
+</div>
+<div class="stepcount" id="stepCount"></div>
+
+<div class="panel" id="notesPanel" style="margin-top:6px;">
+  <div id="notesToggle" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-weight:700; font-size:13px; color:#0f172a;">
+    <span>⚠ Pilot Notes — things this diagram simplifies</span>
+    <span id="notesArrow">▾</span>
+  </div>
+  <div id="notesBody" style="display:none; margin-top:10px; font-size:13px; color:#475569; line-height:1.7;">
+    <b>Wind correction:</b> this diagram ignores wind. In real flying, after entering the hold, triple the inbound drift correction angle on the outbound leg to keep from drifting outside protected airspace.<br><br>
+    <b>HSI course pointer:</b> the 20° tilt shortcut only works if the course pointer is set to the <i>inbound</i> course. If you're in the habit of setting it to outbound, this sector picture will be backwards — double check before using it.<br><br>
+    <b>Timing vs. DME:</b> if timing the outbound leg, start the clock when abeam the fix (when the TO/FROM indicator flips, or wings level after the turn) — not at fix crossing. If using DME instead, the turn point is purely distance-based, not time-based.
+  </div>
+</div>
+
+<script>
+const SVG_NS = "http://www.w3.org/2000/svg";
+const CX = 360, CY = 300; // fix location on screen
+
+function el(tag, attrs) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// Geometry helpers: bearings in degrees, 0=up(north), clockwise.
+function toRad(deg) { return (deg - 90) * Math.PI / 180; } // screen: 0deg=up
+function pointAt(cx, cy, bearing, dist) {
+  const r = toRad(bearing);
+  return { x: cx + Math.cos(r) * dist, y: cy + Math.sin(r) * dist };
+}
+function norm360(d) { d = d % 360; return d < 0 ? d + 360 : d; }
+
+const svg = document.getElementById('svg');
+
+function clearSvg() { svg.innerHTML = ''; }
+
+// Recognizable top-down aircraft silhouette (nose pointing up at bearing 0)
+const PLANE_PATH = "M0,-16 L2.6,-9 L2.6,-1 L11,5 L11,8.2 L2.6,5.8 L2.2,12.5 L5.4,15.6 L5.4,18 L0,16.2 L-5.4,18 L-5.4,15.6 L-2.2,12.5 L-2.6,5.8 L-11,8.2 L-11,5 L-2.6,-1 L-2.6,-9 Z";
+
+function planeIconAt(x, y, bearing, scale) {
+  scale = scale || 1.8;
+  const g = el('g', { transform: `translate(${x},${y}) rotate(${bearing}) scale(${scale})` });
+  g.appendChild(el('path', { d: PLANE_PATH, fill: '#0f172a', stroke: '#fff', 'stroke-width': 1.4, 'stroke-linejoin': 'round' }));
+  return g;
+}
+
+// Build static grid/background lines inside svg (the chartwrap div already has grid bg, so just draw geometry).
+function drawBase(state) {
+  clearSvg();
+  const { inbound, outbound, isStandard } = state;
+
+  const legLen = 155;
+  const trackWidth = 70; // distance between inbound/outbound straight legs
+
+  const turnSign = isStandard ? 1 : -1;
+  const perpBearing = norm360(inbound + 90 * turnSign);
+
+  const fix = { x: CX, y: CY };
+  const outFixOffset = pointAt(fix.x, fix.y, perpBearing, trackWidth);
+
+  const inboundFar = pointAt(fix.x, fix.y, norm360(inbound + 180), legLen);
+  const outboundNear = outFixOffset;
+  const outboundFar = pointAt(outboundNear.x, outboundNear.y, outbound, legLen);
+
+  const g = el('g', {});
+
+  const turnRadius = trackWidth / 2;
+  const sweep = isStandard ? 1 : 0;
+  const path = `
+    M ${fix.x} ${fix.y}
+    A ${turnRadius} ${turnRadius} 0 0 ${sweep} ${outboundNear.x} ${outboundNear.y}
+    L ${outboundFar.x} ${outboundFar.y}
+    A ${turnRadius} ${turnRadius} 0 0 ${sweep} ${inboundFar.x} ${inboundFar.y}
+    L ${fix.x} ${fix.y}
+  `;
+  g.appendChild(el('path', { d: path, fill: 'none', stroke: '#fff', 'stroke-width': 4, 'stroke-linejoin':'round' }));
+
+  function arrow(p1, p2, color) {
+    const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+    const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const size = 18;
+    const pts = [
+      [mx + Math.cos(ang) * size, my + Math.sin(ang) * size],
+      [mx + Math.cos(ang + 2.5) * size * 0.6, my + Math.sin(ang + 2.5) * size * 0.6],
+      [mx + Math.cos(ang - 2.5) * size * 0.6, my + Math.sin(ang - 2.5) * size * 0.6],
+    ];
+    g.appendChild(el('polygon', { points: pts.map(p => p.join(',')).join(' '), fill: color, stroke: '#fff', 'stroke-width': 1 }));
+  }
+  arrow(outboundNear, outboundFar, '#38bdf8');
+  arrow(inboundFar, fix, '#34d399');
+
+  g.appendChild(el('circle', { cx: fix.x, cy: fix.y, r: 7, fill: '#fff' }));
+  g.appendChild(el('circle', { cx: fix.x, cy: fix.y, r: 13, fill: 'none', stroke: '#fff', 'stroke-width': 2 }));
+
+  const outLabelPos = pointAt(outboundFar.x, outboundFar.y, outbound, 28);
+  g.appendChild(el('text', { x: outLabelPos.x, y: outLabelPos.y, fill: '#38bdf8', 'font-size': 16, 'font-family': "'Segoe UI',sans-serif", 'font-weight': 700, 'text-anchor':'middle' })).textContent = `OUTBOUND ${outbound.toFixed(0)}°`;
+  const inLabelPos = pointAt(inboundFar.x, inboundFar.y, norm360(inbound+180), 28);
+  g.appendChild(el('text', { x: inLabelPos.x, y: inLabelPos.y, fill: '#34d399', 'font-size': 16, 'font-family': "'Segoe UI',sans-serif", 'font-weight': 700, 'text-anchor':'middle' })).textContent = `INBOUND ${inbound.toFixed(0)}°`;
+
+  svg.appendChild(g);
+  return { fix, inboundFar, outboundFar, outboundNear, perpBearing, turnSign };
+}
+
+// HSI 20-degree-tilt method:
+// Course pointer set to inbound course = dial "0" (12 o'clock).
+// Imagine the 9-3 o'clock line; tilt it 20 toward the turn side. That tilted line's two
+// rays (ray1, ray2 = ray1+180) bound the 180-wide Direct sector (the half containing inbound/0).
+// The outbound ray (180, the vertical "straight down" line) then splits the remaining
+// half into the 70-wide Teardrop and 110-wide Parallel sub-sectors.
+function sectorRays(isStandard) {
+  const s = isStandard ? 1 : -1;
+  const ray1 = norm360(90 - 20 * s);   // 70 (standard) / 110 (non-standard)
+  const ray2 = norm360(ray1 + 180);    // 250 (standard) / 290 (non-standard)
+  return { s, ray1, ray2 };
+}
+
+function classify(inbound, arrival, isStandard) {
+  const { s, ray1, ray2 } = sectorRays(isStandard);
+  const raw = norm360(arrival - inbound); // track-space difference, no turn-sign multiply
+  if (raw <= ray1 || raw >= ray2) return 'direct';
+  if (raw <= 180) return s === 1 ? 'parallel' : 'teardrop';
+  return s === 1 ? 'teardrop' : 'parallel';
+}
+
+// Convert a track-space dial value to a real drawing bearing: the wedge is drawn where the
+// aircraft would physically sit (the reciprocal of the track), hence +180.
+function bearingForDiff(inbound, diff) { return norm360(inbound + diff + 180); }
+
+function animateDraw(shape, finalDasharray, duration) {
+  const len = shape.getTotalLength();
+  shape.setAttribute('stroke-dasharray', `${len}`);
+  shape.setAttribute('stroke-dashoffset', `${len}`);
+  shape.style.transition = `stroke-dashoffset ${duration}s linear`;
+  requestAnimationFrame(() => {
+    shape.setAttribute('stroke-dasharray', finalDasharray);
+    shape.style.transition = '';
+    shape.setAttribute('stroke-dashoffset', '0');
+  });
+}
+
+// Small degree readout placed just beyond a line's tip, showing the real-world bearing it's drawn at.
+function degreeLabel(g, fix, bearing, color) {
+  const p = pointAt(fix.x, fix.y, bearing, 252);
+  const t = el('text', { x: p.x, y: p.y, fill: color, 'font-size': 13, 'font-weight': 700, 'font-family': "'Segoe UI',sans-serif", 'text-anchor': 'middle' });
+  t.textContent = `${Math.round(norm360(bearing))}°`;
+  g.appendChild(t);
+}
+
+// Line 1: the tilted Direct-boundary line (ray1 / ray2), drawn from one end through the fix.
+// r1 is where the draw-in animation starts from.
+function drawSectorLine1(state, g, animate) {
+  const { inbound, isStandard } = state;
+  const fix = state.base.fix;
+  const { ray1, ray2 } = sectorRays(isStandard);
+  const bearing1 = bearingForDiff(inbound, ray1);
+  const bearing2 = bearingForDiff(inbound, ray2);
+  const r1 = pointAt(fix.x, fix.y, bearing1, 240);
+  const r2 = pointAt(fix.x, fix.y, bearing2, 240);
+  const path = el('path', { d: `M ${r1.x} ${r1.y} L ${r2.x} ${r2.y}`, fill: 'none', stroke: '#cbd5e1', 'stroke-width': 1.5, 'stroke-dasharray': '6,4', opacity: 0.8 });
+  g.appendChild(path);
+  if (animate) animateDraw(path, '6,4', 1.0);
+  degreeLabel(g, fix, bearing1, '#cbd5e1');
+}
+
+// Line 2: the Teardrop/Parallel boundary ray (outbound dial value 180), drawn outward from the fix —
+// i.e. it starts AT the fix, so the degree readout sits at the outer tip where it points to.
+function drawSectorLine2(state, g, animate) {
+  const { inbound } = state;
+  const fix = state.base.fix;
+  const bearing = bearingForDiff(inbound, 180);
+  const ray = pointAt(fix.x, fix.y, bearing, 210);
+  const path = el('path', { d: `M ${fix.x} ${fix.y} L ${ray.x} ${ray.y}`, fill: 'none', stroke: '#facc15', 'stroke-width': 1.5, 'stroke-dasharray': '4,3', opacity: 0.85 });
+  g.appendChild(path);
+  if (animate) animateDraw(path, '4,3', 1.0);
+  degreeLabel(g, fix, bearing, '#facc15');
+}
+
+function drawSectorLabels(state, g) {
+  const { inbound, isStandard } = state;
+  const fix = state.base.fix;
+  const { s, ray1, ray2 } = sectorRays(isStandard);
+
+  function midLabel(diff, text, color) {
+    const p = pointAt(fix.x, fix.y, bearingForDiff(inbound, diff), 135);
+    const t = el('text', { x: p.x, y: p.y, fill: color, 'font-size': 19, 'font-weight':'bold', 'font-family': "'Segoe UI',sans-serif", 'text-anchor':'middle' });
+    t.textContent = text;
+    g.appendChild(t);
+  }
+  const directMid = ray1 - 90;
+  const teardropMid = s === 1 ? (180 + ray2) / 2 : (ray1 + 180) / 2;
+  const parallelMid = s === 1 ? (ray1 + 180) / 2 : (180 + ray2) / 2;
+  midLabel(directMid, 'D', '#ef5350');
+  midLabel(teardropMid, 'T', '#34d399');
+  midLabel(parallelMid, 'P', '#facc15');
+}
+
+let currentState = null;
+let animStep = -1;
+let maxStep = 4;
+
+function render() {
+  const inbound = parseFloat(document.getElementById('inboundCourse').value) || 0;
+  const arrival = parseFloat(document.getElementById('arrivalBearing').value) || 0;
+  const isStandard = document.querySelector('.toggle-btn[data-group=pattern].active').dataset.value === 'standard';
+  const outbound = norm360(inbound + 180);
+
+  const state = { inbound, arrival, outbound, isStandard };
+  currentState = state;
+  const base = drawBase(state);
+
+  const entryType = classify(inbound, arrival, isStandard);
+  state.entryType = entryType;
+  state.base = base;
+
+  return state;
+}
+
+function describeStep(state, step) {
+  const titleEl = document.getElementById('stepTitle');
+  const descEl = document.getElementById('stepDesc');
+  const badge = document.getElementById('resultBadge');
+  const typeColor = { direct: '#ef5350', teardrop: '#16a34a', parallel: '#d97706' }[state.entryType];
+  const typeName = { direct: 'DIRECT ENTRY', teardrop: 'TEARDROP ENTRY', parallel: 'PARALLEL ENTRY' }[state.entryType];
+
+  const steps = [
+    { t: 'STEP 1 — Boundary Line 1', d: 'HSI shortcut: set the course pointer to the inbound course, then tilt the 9-3 line 20° toward the turn side. This line starts at the fix and bounds the 180°-wide Direct sector.' },
+    { t: 'STEP 2 — Boundary Line 2', d: 'A second ray, drawn outward from the fix along the outbound course, splits the remaining space into a 70° Teardrop sector and a 110° Parallel sector.' },
+    { t: 'STEP 3 — Sector Identified', d: `Arriving on a bearing of ${state.arrival}° to the fix — this falls in the ${state.entryType.toUpperCase()} sector.` },
+    { t: 'STEP 4 — Entry Maneuver', d: entryDescription(state.entryType, state.isStandard) },
+    { t: 'STEP 5 — Established', d: 'Aircraft is now established inbound on the holding course, flying the racetrack pattern.' },
+  ];
+  titleEl.textContent = steps[step].t;
+  titleEl.style.color = typeColor;
+  descEl.textContent = steps[step].d;
+  badge.innerHTML = step >= 2 ? `<span class="badge" style="background:${typeColor}">${typeName}</span>` : '';
+
+  const formulaBox = document.getElementById('formulaBox');
+  const { s, ray1 } = sectorRays(state.isStandard);
+  const inbound = state.inbound;
+  const bearing1 = norm360(inbound + ray1 + 180);
+  const bearing2 = norm360(inbound + 180 + 180);
+  if (step === 0) {
+    const sum1 = inbound + ray1 + 180;
+    formulaBox.style.display = 'block';
+    formulaBox.innerHTML =
+      `Boundary Line 1 (Direct sector edge):<br>` +
+      `ray1 = 90 − 20×s, s=${s} (${s === 1 ? 'standard' : 'non-standard'}) → ray1 = ${ray1}°<br>` +
+      `bearing = inbound + ray1 + 180<br>` +
+      `&nbsp;&nbsp;&nbsp;= ${inbound} + ${ray1} + 180 = ${sum1}${sum1 >= 360 ? ` − 360 = ${sum1 - 360}` : ''}<br>` +
+      `&nbsp;&nbsp;&nbsp;= <b>${bearing1}°</b>`;
+  } else if (step === 1) {
+    formulaBox.style.display = 'block';
+    formulaBox.innerHTML =
+      `Boundary Line 2 (Teardrop / Parallel edge):<br>` +
+      `this ray sits at dial value 180° (the outbound position)<br>` +
+      `bearing = inbound + 180 + 180<br>` +
+      `&nbsp;&nbsp;&nbsp;= ${inbound} + 360 = ${inbound + 360} (− 360)<br>` +
+      `&nbsp;&nbsp;&nbsp;= <b>${bearing2}°</b> &nbsp;(always equals the inbound course)`;
+  } else if (step === 2) {
+    const { ray2 } = sectorRays(state.isStandard);
+    const raw = norm360(state.arrival - inbound);
+    // Matches classify() exactly: raw<=ray1 or raw>=ray2 -> Direct; else raw<=180 -> one of
+    // Teardrop/Parallel, raw>180 -> the other (which one flips with turn direction s).
+    const teardropRange = s === 1 ? `180° &lt; raw &lt; ${ray2}°` : `${ray1}° &lt; raw ≤ 180°`;
+    const parallelRange = s === 1 ? `${ray1}° &lt; raw ≤ 180°` : `180° &lt; raw &lt; ${ray2}°`;
+
+    function row(name, range, isMatch) {
+      const arrow = isMatch ? ' ← arrival is here' : '';
+      const open = isMatch ? '<b>' : '';
+      const close = isMatch ? '</b>' : '';
+      return `${open}${name}: ${range}${arrow}${close}`;
+    }
+    formulaBox.style.display = 'block';
+    formulaBox.innerHTML =
+      `raw = arrival − inbound (mod 360) = ${state.arrival} − ${inbound} = <b>${raw}°</b><br><br>` +
+      row('Direct', `raw ≤ ${ray1}° or raw ≥ ${ray2}°`, state.entryType === 'direct') + '<br>' +
+      row('Teardrop', teardropRange, state.entryType === 'teardrop') + '<br>' +
+      row('Parallel', parallelRange, state.entryType === 'parallel');
+  } else {
+    formulaBox.style.display = 'none';
+  }
+}
+
+function entryDescription(type, isStandard) {
+  const side = isStandard ? 'right' : 'left';
+  if (type === 'direct') return `Aircraft flies directly to the fix and turns ${side} into the outbound leg, joining the pattern immediately.`;
+  if (type === 'teardrop') return `Aircraft crosses the fix, then flies a heading 30° off the OUTBOUND course (angled INTO the protected area, not straight out) for about 1 minute. It then makes a ${side} turn and flies back to intercept the inbound course at the fix.`;
+  return `Aircraft crosses the fix, flies outbound parallel to the inbound course (opposite direction) for about 1 minute OUTSIDE the protected area, then turns ${side} (more than 180°) to intercept the inbound course.`;
+}
+
+function drawPlane(state, g) {
+  const fix = state.base.fix;
+  const approachFrom = pointAt(fix.x, fix.y, norm360(state.arrival + 180), 235);
+  const headingIntoFix = state.arrival;
+  const plane = planeIconAt(approachFrom.x, approachFrom.y, headingIntoFix);
+  plane.setAttribute('id', 'planeIcon');
+  g.appendChild(plane);
+  g.appendChild(el('line', { x1: approachFrom.x, y1: approachFrom.y, x2: fix.x, y2: fix.y, stroke: '#e2e8f0', 'stroke-width': 1.5, 'stroke-dasharray': '5,3', opacity: 0.7 }));
+}
+
+// Idle/live preview: shown by default and refreshed instantly on every input change,
+// before "Start" is pressed. Just the racetrack + plane at the current bearing.
+function drawIdle() {
+  const state = render();
+  const old = svg.querySelector('#animLayer');
+  if (old) old.remove();
+  const g = el('g', { id: 'animLayer' });
+  svg.appendChild(g);
+  drawPlane(state, g);
+
+  animStep = -1;
+  document.getElementById('stepTitle').textContent = 'Ready';
+  document.getElementById('stepTitle').style.color = '#0f172a';
+  document.getElementById('stepDesc').textContent = 'Adjust the inputs above, then hit Start to walk through the entry sectors and maneuver.';
+  document.getElementById('resultBadge').innerHTML = '';
+  document.getElementById('backBtn').disabled = true;
+  document.getElementById('nextBtn').disabled = true;
+  document.getElementById('stepCount').textContent = '';
+}
+
+function animateToStep(step) {
+  const state = currentState;
+  describeStep(state, step);
+
+  const old = svg.querySelector('#animLayer');
+  if (old) old.remove();
+  const g = el('g', { id: 'animLayer' });
+  svg.appendChild(g);
+
+  drawPlane(state, g);
+
+  if (step >= 0) {
+    drawSectorLine1(state, g, step === 0);
+  }
+
+  if (step >= 1) {
+    drawSectorLine2(state, g, step === 1);
+    drawSectorLabels(state, g);
+  }
+
+  if (step >= 3) {
+    drawEntryPath(state, g, step === 3);
+  }
+
+  if (step >= 4) {
+    const inboundFar = state.base.inboundFar;
+    const fix = state.base.fix;
+    g.appendChild(el('line', { x1: inboundFar.x, y1: inboundFar.y, x2: fix.x, y2: fix.y, stroke: '#34d399', 'stroke-width': 4, opacity: 0.9 }));
+  }
+}
+
+function buildEntryPathStr(state) {
+  const fix = state.base.fix;
+  const turnSign = state.isStandard ? 1 : -1;
+  let pathStr = '';
+
+  if (state.entryType === 'direct') {
+    const from = pointAt(fix.x, fix.y, norm360(state.arrival + 180), 130);
+    pathStr = `M ${from.x} ${from.y} L ${fix.x} ${fix.y}`;
+  } else if (state.entryType === 'teardrop') {
+    // Fly outbound on the teardrop track, then TURN before intercepting the inbound course
+    // back to the fix — drawn as a slight kink so it's visually distinct from the outbound leg.
+    const teardropTrack = norm360(state.outbound + 30 * turnSign);
+    const out = pointAt(fix.x, fix.y, teardropTrack, 105);
+    const turnBack = pointAt(out.x, out.y, norm360(teardropTrack + 90 * turnSign), 20);
+    pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} L ${turnBack.x} ${turnBack.y} L ${fix.x} ${fix.y}`;
+  } else { // parallel
+    const out = pointAt(fix.x, fix.y, state.outbound, 105);
+    const turnBack = pointAt(out.x, out.y, norm360(state.outbound + 90 * turnSign), 35);
+    pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} L ${turnBack.x} ${turnBack.y} L ${fix.x} ${fix.y}`;
+  }
+  return pathStr;
+}
+
+function drawEntryPath(state, g, animate) {
+  const color = { direct: '#ef5350', teardrop: '#16a34a', parallel: '#d97706' }[state.entryType];
+  const pathStr = buildEntryPathStr(state);
+
+  const path = el('path', { d: pathStr, fill: 'none', stroke: color, 'stroke-width': 5, 'stroke-dasharray': '12,7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+  g.appendChild(path);
+
+  if (animate) {
+    // Move the plane icon along the entry path as it draws, like the path is being flown live.
+    const existingPlane = g.querySelector('#planeIcon');
+    if (existingPlane) existingPlane.remove();
+
+    const len = path.getTotalLength();
+    path.setAttribute('stroke-dasharray', `${len}`);
+    path.setAttribute('stroke-dashoffset', `${len}`);
+    path.style.transition = 'stroke-dashoffset 1.8s linear';
+    requestAnimationFrame(() => {
+      path.setAttribute('stroke-dasharray', '12,7');
+      path.style.transition = '';
+      path.setAttribute('stroke-dashoffset', '0');
+    });
+
+    const movingPlane = el('g', { id: 'movingPlane' });
+    movingPlane.appendChild(el('path', { d: PLANE_PATH, fill: color, stroke: '#fff', 'stroke-width': 1.4, 'stroke-linejoin': 'round', transform: 'scale(1.8)' }));
+    const motion = el('animateMotion', { dur: '1.8s', repeatCount: '1', rotate: 'auto', fill: 'freeze', path: pathStr });
+    movingPlane.appendChild(motion);
+    g.appendChild(movingPlane);
+  }
+}
+
+document.querySelectorAll('.toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll(`.toggle-btn[data-group=${btn.dataset.group}]`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    drawIdle();
+  });
+});
+
+document.getElementById('inboundCourse').addEventListener('input', drawIdle);
+document.getElementById('arrivalBearing').addEventListener('input', drawIdle);
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  animStep = 0;
+  render();
+  animateToStep(0);
+  document.getElementById('nextBtn').disabled = false;
+  document.getElementById('backBtn').disabled = false;
+  updateStepCount();
+});
+
+document.getElementById('nextBtn').addEventListener('click', () => {
+  if (animStep < maxStep) {
+    animStep++;
+    animateToStep(animStep);
+    document.getElementById('backBtn').disabled = false;
+    if (animStep === maxStep) document.getElementById('nextBtn').disabled = true;
+    updateStepCount();
+  }
+});
+
+document.getElementById('backBtn').addEventListener('click', () => {
+  if (animStep > 0) {
+    animStep--;
+    animateToStep(animStep);
+    document.getElementById('nextBtn').disabled = false;
+    if (animStep === 0) document.getElementById('backBtn').disabled = true;
+    updateStepCount();
+  } else if (animStep === 0) {
+    drawIdle();
+  }
+});
+
+function updateStepCount() {
+  document.getElementById('stepCount').textContent = `${animStep + 1} / ${maxStep + 1} steps`;
+}
+
+document.getElementById('notesToggle').addEventListener('click', () => {
+  const body = document.getElementById('notesBody');
+  const arrow = document.getElementById('notesArrow');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  arrow.textContent = open ? '▾' : '▴';
+});
+
+drawIdle();
+</script>
+</body>
+</html>
