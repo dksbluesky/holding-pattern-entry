@@ -588,9 +588,14 @@ function buildEntryPathStr(state) {
     const loopControl = pointAt(out.x, out.y, norm360(teardropTrack + 110 * turnSign), 95);
     pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} Q ${loopControl.x} ${loopControl.y} ${fix.x} ${fix.y}`;
   } else { // parallel
-    const out = pointAt(fix.x, fix.y, state.outbound, 105);
+    // "Parallel to the inbound course" means a laterally-shifted line on the NON-holding side —
+    // the mirror image of how the racetrack's own outbound leg sits offset on the holding side
+    // (drawBase uses inbound + 90*turnSign for that; non-holding side is the reciprocal of it).
+    const nonHoldSide = norm360(state.inbound + 90 * turnSign + 180);
+    const outNear = pointAt(fix.x, fix.y, nonHoldSide, 45);
+    const out = pointAt(outNear.x, outNear.y, state.outbound, 105);
     const turnBack = pointAt(out.x, out.y, norm360(state.outbound + 90 * turnSign), 35);
-    pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} L ${turnBack.x} ${turnBack.y} L ${fix.x} ${fix.y}`;
+    pathStr = `M ${fix.x} ${fix.y} L ${outNear.x} ${outNear.y} L ${out.x} ${out.y} L ${turnBack.x} ${turnBack.y} L ${fix.x} ${fix.y}`;
   }
   return pathStr;
 }
