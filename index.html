@@ -303,7 +303,7 @@ function drawBase(state) {
   g.appendChild(el('text', { x: inLabelPos.x, y: inLabelPos.y, fill: '#34d399', 'font-size': 16, 'font-family': "'Segoe UI',sans-serif", 'font-weight': 700, 'text-anchor':'middle' })).textContent = `INBOUND ${inbound.toFixed(0)}°`;
 
   svg.appendChild(g);
-  return { fix, inboundFar, outboundFar, outboundNear, perpBearing, turnSign };
+  return { fix, inboundFar, outboundFar, outboundNear, perpBearing, turnSign, racetrackPath: path };
 }
 
 // HSI 20-degree-tilt method:
@@ -404,7 +404,7 @@ function drawSectorLabels(state, g) {
 
 let currentState = null;
 let animStep = -1;
-let maxStep = 4;
+let maxStep = 5;
 
 function render() {
   const inbound = parseFloat(document.getElementById('inboundCourse').value) || 0;
@@ -436,6 +436,7 @@ function describeStep(state, step) {
     { t: 'STEP 3 — Sector Identified', d: `Aircraft is positioned at the ${state.arrival}° radial from the fix (flying a track of ${norm360(state.arrival + 180)}° to reach it) — this falls in the ${state.entryType.toUpperCase()} sector.` },
     { t: 'STEP 4 — Entry Maneuver', d: entryDescription(state.entryType, state.isStandard) },
     { t: 'STEP 5 — Established', d: 'Aircraft is now established inbound on the holding course, flying the racetrack pattern.' },
+    { t: 'STEP 6 — Complete the Loop', d: 'Aircraft flies the full racetrack — outbound leg, turn, inbound leg, back to the fix — completing the first full circuit of the hold.' },
   ];
   titleEl.textContent = steps[step].t;
   titleEl.style.color = typeColor;
@@ -561,9 +562,26 @@ function animateToStep(step) {
     const inboundFar = state.base.inboundFar;
     const fix = state.base.fix;
     g.appendChild(el('line', { x1: inboundFar.x, y1: inboundFar.y, x2: fix.x, y2: fix.y, stroke: '#34d399', 'stroke-width': 4, opacity: 0.9 }));
-    // Established: plane now sits at the fix, oriented along the inbound course.
-    const established = planeIconAt(fix.x, fix.y, state.inbound);
+  }
+
+  if (step === 4) {
+    // Established: plane sits at the fix, oriented along the inbound course.
+    const established = planeIconAt(state.base.fix.x, state.base.fix.y, state.inbound);
     g.appendChild(established);
+  }
+
+  if (step >= 5) {
+    // Complete the loop: fly the full racetrack as a dashed overlay on top of the original outline.
+    const color = { direct: '#ef5350', teardrop: '#16a34a', parallel: '#d97706' }[state.entryType];
+    const loopPath = el('path', { d: state.base.racetrackPath, fill: 'none', stroke: color, 'stroke-width': 4, 'stroke-dasharray': '12,7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.95 });
+    g.appendChild(loopPath);
+    if (step === 5) {
+      animateDraw(loopPath, '12,7', 2.4);
+      drawMovingPlane(g, state.base.racetrackPath, color, 2.4);
+    } else {
+      const established = planeIconAt(state.base.fix.x, state.base.fix.y, state.inbound);
+      g.appendChild(established);
+    }
   }
 }
 
@@ -598,6 +616,18 @@ function buildEntryPathStr(state) {
   return pathStr;
 }
 
+// rotate=auto aligns the LOCAL +X axis with the path tangent, but our plane icon is drawn
+// nose-up (facing -Y) — pre-rotate +90° so the nose lines up with the direction of travel.
+function drawMovingPlane(g, pathStr, color, duration) {
+  const movingPlane = el('g', { id: 'movingPlane' });
+  const oriented = el('g', { transform: 'rotate(90) scale(1.8)' });
+  oriented.appendChild(el('path', { d: PLANE_PATH, fill: color, stroke: '#fff', 'stroke-width': 1.4, 'stroke-linejoin': 'round' }));
+  movingPlane.appendChild(oriented);
+  const motion = el('animateMotion', { dur: `${duration}s`, repeatCount: '1', rotate: 'auto', fill: 'freeze', path: pathStr });
+  movingPlane.appendChild(motion);
+  g.appendChild(movingPlane);
+}
+
 function drawEntryPath(state, g, animate) {
   const color = { direct: '#ef5350', teardrop: '#16a34a', parallel: '#d97706' }[state.entryType];
   const pathStr = buildEntryPathStr(state);
@@ -610,25 +640,8 @@ function drawEntryPath(state, g, animate) {
     const existingPlane = g.querySelector('#planeIcon');
     if (existingPlane) existingPlane.remove();
 
-    const len = path.getTotalLength();
-    path.setAttribute('stroke-dasharray', `${len}`);
-    path.setAttribute('stroke-dashoffset', `${len}`);
-    path.style.transition = 'stroke-dashoffset 1.8s linear';
-    requestAnimationFrame(() => {
-      path.setAttribute('stroke-dasharray', '12,7');
-      path.style.transition = '';
-      path.setAttribute('stroke-dashoffset', '0');
-    });
-
-    const movingPlane = el('g', { id: 'movingPlane' });
-    // rotate=auto aligns the LOCAL +X axis with the path tangent, but our plane icon is drawn
-    // nose-up (facing -Y) — pre-rotate +90° so the nose lines up with the direction of travel.
-    const oriented = el('g', { transform: 'rotate(90) scale(1.8)' });
-    oriented.appendChild(el('path', { d: PLANE_PATH, fill: color, stroke: '#fff', 'stroke-width': 1.4, 'stroke-linejoin': 'round' }));
-    movingPlane.appendChild(oriented);
-    const motion = el('animateMotion', { dur: '1.8s', repeatCount: '1', rotate: 'auto', fill: 'freeze', path: pathStr });
-    movingPlane.appendChild(motion);
-    g.appendChild(movingPlane);
+    animateDraw(path, '12,7', 1.8);
+    drawMovingPlane(g, pathStr, color, 1.8);
   }
 }
 
