@@ -569,12 +569,12 @@ function buildEntryPathStr(state) {
     const from = pointAt(fix.x, fix.y, state.arrival, 130);
     pathStr = `M ${from.x} ${from.y} L ${fix.x} ${fix.y}`;
   } else if (state.entryType === 'teardrop') {
-    // Fly outbound on the teardrop track, then TURN before intercepting the inbound course
-    // back to the fix — drawn as a slight kink so it's visually distinct from the outbound leg.
+    // Fly outbound on the teardrop track, then loop/turn back to intercept the inbound course —
+    // drawn as a real curved loop (not a straight there-and-back) so it visibly reads as a teardrop shape.
     const teardropTrack = norm360(state.outbound + 30 * turnSign);
-    const out = pointAt(fix.x, fix.y, teardropTrack, 105);
-    const turnBack = pointAt(out.x, out.y, norm360(teardropTrack + 90 * turnSign), 20);
-    pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} L ${turnBack.x} ${turnBack.y} L ${fix.x} ${fix.y}`;
+    const out = pointAt(fix.x, fix.y, teardropTrack, 115);
+    const loopControl = pointAt(out.x, out.y, norm360(teardropTrack + 100 * turnSign), 85);
+    pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} Q ${loopControl.x} ${loopControl.y} ${fix.x} ${fix.y}`;
   } else { // parallel
     const out = pointAt(fix.x, fix.y, state.outbound, 105);
     const turnBack = pointAt(out.x, out.y, norm360(state.outbound + 90 * turnSign), 35);
