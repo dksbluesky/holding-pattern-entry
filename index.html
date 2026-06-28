@@ -594,7 +594,10 @@ function buildEntryPathStr(state) {
     // pattern's normal direction) through >180° to intercept inbound. Built as a small turn arc
     // (radius matches the racetrack's own turn radius) + a long straight leg at the outbound
     // bearing, so the leg is genuinely parallel — not a disproportionate diagonal kink.
-    const turnRadius = 25;
+    // Offset distance is deliberately larger than the racetrack's own trackWidth (70) so the
+    // parallel leg reads as clearly separate from the pattern outline, not hugging it.
+    // turnRadius must be at least half the offset distance for the arc to be a valid semicircle.
+    const turnRadius = 50;
     const nonHoldSide = norm360(state.inbound + 90 * turnSign + 180);
     const outNear = pointAt(fix.x, fix.y, nonHoldSide, turnRadius * 2);
     const out = pointAt(outNear.x, outNear.y, state.outbound, 105);
