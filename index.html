@@ -588,23 +588,12 @@ function buildEntryPathStr(state) {
     const loopControl = pointAt(out.x, out.y, norm360(teardropTrack + 110 * turnSign), 95);
     pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} Q ${loopControl.x} ${loopControl.y} ${fix.x} ${fix.y}`;
   } else { // parallel
-    // Parallel entry's INITIAL turn (fix -> parallel leg) is deliberately AGAINST the pattern's
-    // normal turn direction — for a standard (right-turn) hold you turn LEFT first, to get onto
-    // the non-holding side, then fly a leg truly parallel to outbound, then turn back (in the
-    // pattern's normal direction) through >180° to intercept inbound. Built as a small turn arc
-    // (radius matches the racetrack's own turn radius) + a long straight leg at the outbound
-    // bearing, so the leg is genuinely parallel — not a disproportionate diagonal kink.
-    // Offset distance is deliberately larger than the racetrack's own trackWidth (70) so the
-    // parallel leg reads as clearly separate from the pattern outline, not hugging it.
-    // turnRadius must be at least half the offset distance for the arc to be a valid semicircle.
-    const turnRadius = 50;
-    const nonHoldSide = norm360(state.inbound + 90 * turnSign + 180);
-    const outNear = pointAt(fix.x, fix.y, nonHoldSide, turnRadius * 2);
-    const out = pointAt(outNear.x, outNear.y, state.outbound, 105);
-    const turnBack = pointAt(out.x, out.y, norm360(state.outbound + 90 * turnSign), 35);
-    const initialSweep = turnSign === 1 ? 0 : 1; // opposite of the racetrack's own turn sweep
-    pathStr = `M ${fix.x} ${fix.y} A ${turnRadius} ${turnRadius} 0 0 ${initialSweep} ${outNear.x} ${outNear.y} ` +
-      `L ${out.x} ${out.y} L ${turnBack.x} ${turnBack.y} L ${fix.x} ${fix.y}`;
+    // Reference depiction: aircraft flies outbound hugging the same axis as the outbound course
+    // (not offset onto a separate far-away line), then a single smooth curved hook loops back
+    // to intercept the fix — a continuous curve, not a sharp-cornered polygon.
+    const out = pointAt(fix.x, fix.y, state.outbound, 100);
+    const loopControl = pointAt(out.x, out.y, norm360(state.inbound + 90 * turnSign), 90);
+    pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} Q ${loopControl.x} ${loopControl.y} ${fix.x} ${fix.y}`;
   }
   return pathStr;
 }
