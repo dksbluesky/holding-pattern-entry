@@ -172,7 +172,7 @@
       <input type="number" id="inboundCourse" value="270" min="0" max="360" inputmode="numeric">
     </div>
     <div class="field">
-      <label>Aircraft Arrival Bearing (°)</label>
+      <label>Arrival Radial — bearing FROM fix to plane (°)</label>
       <input type="number" id="arrivalBearing" value="180" min="0" max="360" inputmode="numeric">
     </div>
   </div>
@@ -321,7 +321,10 @@ function sectorRays(isStandard) {
 
 function classify(inbound, arrival, isStandard) {
   const { s, ray1, ray2 } = sectorRays(isStandard);
-  const raw = norm360(arrival - inbound); // track-space difference, no turn-sign multiply
+  // "arrival" is the bearing FROM the fix TO the aircraft (where it physically is).
+  // The track it flies TO the fix is the reciprocal — that's what compares against inbound course.
+  const trackToFix = norm360(arrival + 180);
+  const raw = norm360(trackToFix - inbound); // track-space difference, no turn-sign multiply
   if (raw <= ray1 || raw >= ray2) return 'direct';
   if (raw <= 180) return s === 1 ? 'parallel' : 'teardrop';
   return s === 1 ? 'teardrop' : 'parallel';
@@ -430,7 +433,7 @@ function describeStep(state, step) {
   const steps = [
     { t: 'STEP 1 — Boundary Line 1', d: 'HSI shortcut: set the course pointer to the inbound course, then tilt the 9-3 line 20° toward the turn side. This line starts at the fix and bounds the 180°-wide Direct sector.' },
     { t: 'STEP 2 — Boundary Line 2', d: 'A second ray, drawn outward from the fix along the outbound course, splits the remaining space into a 70° Teardrop sector and a 110° Parallel sector.' },
-    { t: 'STEP 3 — Sector Identified', d: `Arriving on a bearing of ${state.arrival}° to the fix — this falls in the ${state.entryType.toUpperCase()} sector.` },
+    { t: 'STEP 3 — Sector Identified', d: `Aircraft is positioned at the ${state.arrival}° radial from the fix (flying a track of ${norm360(state.arrival + 180)}° to reach it) — this falls in the ${state.entryType.toUpperCase()} sector.` },
     { t: 'STEP 4 — Entry Maneuver', d: entryDescription(state.entryType, state.isStandard) },
     { t: 'STEP 5 — Established', d: 'Aircraft is now established inbound on the holding course, flying the racetrack pattern.' },
   ];
@@ -463,7 +466,8 @@ function describeStep(state, step) {
       `&nbsp;&nbsp;&nbsp;= <b>${bearing2}°</b> &nbsp;(always equals the inbound course)`;
   } else if (step === 2) {
     const { ray2 } = sectorRays(state.isStandard);
-    const raw = norm360(state.arrival - inbound);
+    const trackToFix = norm360(state.arrival + 180);
+    const raw = norm360(trackToFix - inbound);
     // Matches classify() exactly: raw<=ray1 or raw>=ray2 -> Direct; else raw<=180 -> one of
     // Teardrop/Parallel, raw>180 -> the other (which one flips with turn direction s).
     const teardropRange = s === 1 ? `180° &lt; raw &lt; ${ray2}°` : `${ray1}° &lt; raw ≤ 180°`;
@@ -477,7 +481,8 @@ function describeStep(state, step) {
     }
     formulaBox.style.display = 'block';
     formulaBox.innerHTML =
-      `raw = arrival − inbound (mod 360) = ${state.arrival} − ${inbound} = <b>${raw}°</b><br><br>` +
+      `track to fix = arrival + 180 = ${state.arrival} + 180 = ${trackToFix}°<br>` +
+      `raw = track − inbound (mod 360) = ${trackToFix} − ${inbound} = <b>${raw}°</b><br><br>` +
       row('Direct', `raw ≤ ${ray1}° or raw ≥ ${ray2}°`, state.entryType === 'direct') + '<br>' +
       row('Teardrop', teardropRange, state.entryType === 'teardrop') + '<br>' +
       row('Parallel', parallelRange, state.entryType === 'parallel');
@@ -495,8 +500,9 @@ function entryDescription(type, isStandard) {
 
 function drawPlane(state, g) {
   const fix = state.base.fix;
-  const approachFrom = pointAt(fix.x, fix.y, norm360(state.arrival + 180), 235);
-  const headingIntoFix = state.arrival;
+  // "arrival" is the bearing FROM the fix TO the plane, i.e. where it physically sits.
+  const approachFrom = pointAt(fix.x, fix.y, state.arrival, 235);
+  const headingIntoFix = norm360(state.arrival + 180);
   const plane = planeIconAt(approachFrom.x, approachFrom.y, headingIntoFix);
   plane.setAttribute('id', 'planeIcon');
   g.appendChild(plane);
@@ -560,7 +566,7 @@ function buildEntryPathStr(state) {
   let pathStr = '';
 
   if (state.entryType === 'direct') {
-    const from = pointAt(fix.x, fix.y, norm360(state.arrival + 180), 130);
+    const from = pointAt(fix.x, fix.y, state.arrival, 130);
     pathStr = `M ${from.x} ${from.y} L ${fix.x} ${fix.y}`;
   } else if (state.entryType === 'teardrop') {
     // Fly outbound on the teardrop track, then TURN before intercepting the inbound course
