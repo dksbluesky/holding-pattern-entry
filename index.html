@@ -320,14 +320,20 @@ function sectorRays(isStandard) {
 }
 
 function classify(inbound, arrival, isStandard) {
-  const { s, ray1, ray2 } = sectorRays(isStandard);
+  const s = isStandard ? 1 : -1;
   // "arrival" is the bearing FROM the fix TO the aircraft (where it physically is).
   // The track it flies TO the fix is the reciprocal — that's what compares against inbound course.
   const trackToFix = norm360(arrival + 180);
-  const raw = norm360(trackToFix - inbound); // track-space difference, no turn-sign multiply
-  if (raw <= ray1 || raw >= ray2) return 'direct';
-  if (raw <= 180) return s === 1 ? 'parallel' : 'teardrop';
-  return s === 1 ? 'teardrop' : 'parallel';
+  const raw = norm360(trackToFix - inbound);
+  // 'a' measures how far arrival is from the OUTBOUND course, walking around the circle
+  // in the direction that leads into the non-holding side (mirrored for left-turn holds).
+  // a in [0,70)   -> Teardrop  (adjacent to outbound)
+  // a in [70,180) -> Parallel  (adjacent to inbound, still non-holding side)
+  // a in [180,360)-> Direct    (the whole holding-side half)
+  const a = s === 1 ? raw : norm360(360 - raw);
+  if (a < 70) return 'teardrop';
+  if (a < 180) return 'parallel';
+  return 'direct';
 }
 
 // Convert a track-space dial value to a real drawing bearing: the wedge is drawn where the
@@ -386,7 +392,7 @@ function drawSectorLine2(state, g, animate) {
 function drawSectorLabels(state, g) {
   const { inbound, isStandard } = state;
   const fix = state.base.fix;
-  const { s, ray1, ray2 } = sectorRays(isStandard);
+  const { s } = sectorRays(isStandard);
 
   function midLabel(diff, text, color) {
     const p = pointAt(fix.x, fix.y, bearingForDiff(inbound, diff), 135);
@@ -394,9 +400,13 @@ function drawSectorLabels(state, g) {
     t.textContent = text;
     g.appendChild(t);
   }
-  const directMid = ray1 - 90;
-  const teardropMid = s === 1 ? (180 + ray2) / 2 : (ray1 + 180) / 2;
-  const parallelMid = s === 1 ? (ray1 + 180) / 2 : (180 + ray2) / 2;
+  // Sector midpoints in 'a'-space (see classify()): teardrop centered at a=35,
+  // parallel at a=125, direct at a=270. Convert each back to a diff usable with
+  // bearingForDiff, mirroring for non-standard (left-turn) holds.
+  function midDiffFromA(aMid) { return s === 1 ? aMid : norm360(360 - aMid); }
+  const teardropMid = midDiffFromA(35);
+  const parallelMid = midDiffFromA(125);
+  const directMid = midDiffFromA(270);
   midLabel(directMid, 'D', '#ef5350');
   midLabel(teardropMid, 'T', '#34d399');
   midLabel(parallelMid, 'P', '#facc15');
@@ -466,13 +476,9 @@ function describeStep(state, step) {
       `&nbsp;&nbsp;&nbsp;= ${inbound} + 360 = ${inbound + 360} (− 360)<br>` +
       `&nbsp;&nbsp;&nbsp;= <b>${bearing2}°</b> &nbsp;(always equals the inbound course)`;
   } else if (step === 2) {
-    const { ray2 } = sectorRays(state.isStandard);
     const trackToFix = norm360(state.arrival + 180);
     const raw = norm360(trackToFix - inbound);
-    // Matches classify() exactly: raw<=ray1 or raw>=ray2 -> Direct; else raw<=180 -> one of
-    // Teardrop/Parallel, raw>180 -> the other (which one flips with turn direction s).
-    const teardropRange = s === 1 ? `180° &lt; raw &lt; ${ray2}°` : `${ray1}° &lt; raw ≤ 180°`;
-    const parallelRange = s === 1 ? `${ray1}° &lt; raw ≤ 180°` : `180° &lt; raw &lt; ${ray2}°`;
+    const a = s === 1 ? raw : norm360(360 - raw);
 
     function row(name, range, isMatch) {
       const arrow = isMatch ? ' ← arrival is here' : '';
@@ -483,10 +489,11 @@ function describeStep(state, step) {
     formulaBox.style.display = 'block';
     formulaBox.innerHTML =
       `track to fix = arrival + 180 = ${state.arrival} + 180 = ${trackToFix}°<br>` +
-      `raw = track − inbound (mod 360) = ${trackToFix} − ${inbound} = <b>${raw}°</b><br><br>` +
-      row('Direct', `raw ≤ ${ray1}° or raw ≥ ${ray2}°`, state.entryType === 'direct') + '<br>' +
-      row('Teardrop', teardropRange, state.entryType === 'teardrop') + '<br>' +
-      row('Parallel', parallelRange, state.entryType === 'parallel');
+      `raw = track − inbound (mod 360) = ${trackToFix} − ${inbound} = ${raw}°<br>` +
+      `a (measured from outbound, mirrored for ${s === 1 ? 'standard' : 'non-standard'}) = <b>${a}°</b><br><br>` +
+      row('Teardrop', 'a &lt; 70°', state.entryType === 'teardrop') + '<br>' +
+      row('Parallel', '70° ≤ a &lt; 180°', state.entryType === 'parallel') + '<br>' +
+      row('Direct', 'a ≥ 180°', state.entryType === 'direct');
   } else {
     formulaBox.style.display = 'none';
   }
