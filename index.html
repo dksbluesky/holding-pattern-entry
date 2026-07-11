@@ -486,6 +486,7 @@ function describeStep(state, step) {
       const close = isMatch ? '</b>' : '';
       return `${open}${name}: ${range}${arrow}${close}`;
     }
+    const directRange = s === 1 ? `a = raw ≥ 180°` : `a = 360°−raw ≥ 180°  (raw ≤ 180°)`;
     formulaBox.style.display = 'block';
     formulaBox.innerHTML =
       `track to fix = arrival + 180 = ${state.arrival} + 180 = ${trackToFix}°<br>` +
