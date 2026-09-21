@@ -92,6 +92,7 @@
   #startBtn:disabled { background: #cbd5e1; color: #fff; cursor: not-allowed; }
 
   .chartwrap {
+    position: relative;
     background: #0a2a5e;
     background-image:
       linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
@@ -105,7 +106,22 @@
     max-width: 760px;
     box-shadow: 0 4px 18px rgba(15,23,42,0.18);
   }
-  .chartwrap svg { display: block; width: 100%; height: auto; }
+  .chartwrap svg { display: block; width: 100%; height: auto; cursor: pointer; }
+  #animationState {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 2;
+    display: none;
+    padding: 6px 10px;
+    border: 1px solid rgba(255,255,255,0.55);
+    border-radius: 999px;
+    background: rgba(15,23,42,0.82);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    pointer-events: none;
+  }
 
   .info {
     background: #ffffff;
@@ -189,6 +205,7 @@
 </div>
 
 <div class="chartwrap">
+  <div id="animationState">⏸ Paused — tap diagram to continue</div>
   <svg id="svg" viewBox="0 0 720 600" preserveAspectRatio="xMidYMid meet"></svg>
 </div>
 
@@ -239,13 +256,15 @@ const svg = document.getElementById('svg');
 
 function clearSvg() { svg.innerHTML = ''; }
 
-// Recognizable top-down aircraft silhouette (nose pointing up at bearing 0)
-const PLANE_PATH = "M0,-16 L2.6,-9 L2.6,-1 L11,5 L11,8.2 L2.6,5.8 L2.2,12.5 L5.4,15.6 L5.4,18 L0,16.2 L-5.4,18 L-5.4,15.6 L-2.2,12.5 L-2.6,5.8 L-11,8.2 L-11,5 L-2.6,-1 L-2.6,-9 Z";
+// Same top-down aircraft silhouette used by flight-cockpit-tracker.
+// Its original 24x24 coordinates are centered here and enlarged for this chart.
+const PLANE_PATH = "M12 1.5c-1 0-1.55 1.05-1.55 2.2v5.05L3.2 13.1v2.25l7.25-2.15v4.65l-2.15 1.5v1.65L12 20l3.7 1v-1.65l-2.15-1.5V13.2l7.25 2.15V13.1l-7.25-4.35V3.7C13.55 2.55 13 1.5 12 1.5Z";
+const PLANE_SHAPE_TRANSFORM = 'scale(1.5) translate(-12,-11.25)';
 
 function planeIconAt(x, y, bearing, scale) {
   scale = scale || 1.8;
   const g = el('g', { transform: `translate(${x},${y}) rotate(${bearing}) scale(${scale})` });
-  g.appendChild(el('path', { d: PLANE_PATH, fill: '#0f172a', stroke: '#fff', 'stroke-width': 1.4, 'stroke-linejoin': 'round' }));
+  g.appendChild(el('path', { d: PLANE_PATH, transform: PLANE_SHAPE_TRANSFORM, fill: '#0f172a', stroke: '#fff', 'stroke-width': 1.1, 'stroke-linejoin': 'round' }));
   return g;
 }
 
@@ -303,7 +322,7 @@ function drawBase(state) {
   g.appendChild(el('text', { x: inLabelPos.x, y: inLabelPos.y, fill: '#34d399', 'font-size': 16, 'font-family': "'Segoe UI',sans-serif", 'font-weight': 700, 'text-anchor':'middle' })).textContent = `INBOUND ${inbound.toFixed(0)}°`;
 
   svg.appendChild(g);
-  return { fix, inboundFar, outboundFar, outboundNear, perpBearing, turnSign, racetrackPath: path };
+  return { fix, inboundFar, outboundFar, outboundNear, perpBearing, turnSign, turnRadius, racetrackPath: path };
 }
 
 // HSI 20-degree-tilt method:
@@ -325,15 +344,13 @@ function classify(inbound, arrival, isStandard) {
   // The track it flies TO the fix is the reciprocal — that's what compares against inbound course.
   const trackToFix = norm360(arrival + 180);
   const raw = norm360(trackToFix - inbound);
-  // 'a' measures how far arrival is from the OUTBOUND course, walking around the circle
-  // in the direction that leads into the non-holding side (mirrored for left-turn holds).
-  // a in [0,70)   -> Teardrop  (adjacent to outbound)
-  // a in [70,180) -> Parallel  (adjacent to inbound, still non-holding side)
-  // a in [180,360)-> Direct    (the whole holding-side half)
-  const a = s === 1 ? raw : norm360(360 - raw);
-  if (a < 70) return 'teardrop';
-  if (a < 180) return 'parallel';
-  return 'direct';
+  // Mirror a left-turn hold into the same clockwise reference used by a standard hold.
+  // The Direct sector wraps through 360/0, so it is intentionally represented by two
+  // numeric ranges. These thresholds match the two boundary lines drawn below.
+  const sectorAngle = s === 1 ? raw : norm360(360 - raw);
+  if (sectorAngle < 70 || sectorAngle >= 250) return 'direct';
+  if (sectorAngle < 180) return 'parallel';
+  return 'teardrop';
 }
 
 // Convert a track-space dial value to a real drawing bearing: the wedge is drawn where the
@@ -342,21 +359,32 @@ function bearingForDiff(inbound, diff) { return norm360(inbound + diff + 180); }
 
 function animateDraw(shape, finalDasharray, duration) {
   const len = shape.getTotalLength();
-  shape.setAttribute('stroke-dasharray', `${len}`);
+  shape.setAttribute('stroke-dasharray', `${len} ${len}`);
   shape.setAttribute('stroke-dashoffset', `${len}`);
-  shape.style.transition = `stroke-dashoffset ${duration}s linear`;
-  requestAnimationFrame(() => {
-    shape.setAttribute('stroke-dasharray', finalDasharray);
-    shape.style.transition = '';
-    shape.setAttribute('stroke-dashoffset', '0');
+  // Use the SVG animation clock so path drawing and aircraft motion pause together.
+  const animation = el('animate', {
+    attributeName: 'stroke-dashoffset',
+    from: `${len}`,
+    to: '0',
+    dur: `${duration}s`,
+    begin: 'indefinite',
+    fill: 'freeze'
   });
+  animation.addEventListener('endEvent', () => {
+    shape.setAttribute('stroke-dasharray', finalDasharray);
+    shape.setAttribute('stroke-dashoffset', '0');
+    animation.remove();
+  }, { once: true });
+  shape.appendChild(animation);
+  animation.beginElement();
 }
 
 // Small degree readout placed just beyond a line's tip, showing the real-world bearing it's drawn at.
-function degreeLabel(g, fix, bearing, color) {
+function degreeLabel(g, fix, bearing, color, lineName) {
   const p = pointAt(fix.x, fix.y, bearing, 252);
   const t = el('text', { x: p.x, y: p.y, fill: color, 'font-size': 13, 'font-weight': 700, 'font-family': "'Segoe UI',sans-serif", 'text-anchor': 'middle' });
-  t.textContent = `${Math.round(norm360(bearing))}°`;
+  const degrees = String(Math.round(norm360(bearing))).padStart(3, '0');
+  t.textContent = `${lineName} ${degrees}°`;
   g.appendChild(t);
 }
 
@@ -373,7 +401,7 @@ function drawSectorLine1(state, g, animate) {
   const path = el('path', { d: `M ${r1.x} ${r1.y} L ${r2.x} ${r2.y}`, fill: 'none', stroke: '#cbd5e1', 'stroke-width': 1.5, 'stroke-dasharray': '6,4', opacity: 0.8 });
   g.appendChild(path);
   if (animate) animateDraw(path, '6,4', 1.0);
-  degreeLabel(g, fix, bearing1, '#cbd5e1');
+  degreeLabel(g, fix, bearing1, '#cbd5e1', 'B1');
 }
 
 // Line 2: the Teardrop/Parallel boundary ray (outbound dial value 180), drawn outward from the fix —
@@ -386,7 +414,7 @@ function drawSectorLine2(state, g, animate) {
   const path = el('path', { d: `M ${fix.x} ${fix.y} L ${ray.x} ${ray.y}`, fill: 'none', stroke: '#facc15', 'stroke-width': 1.5, 'stroke-dasharray': '4,3', opacity: 0.85 });
   g.appendChild(path);
   if (animate) animateDraw(path, '4,3', 1.0);
-  degreeLabel(g, fix, bearing, '#facc15');
+  degreeLabel(g, fix, bearing, '#facc15', 'B2');
 }
 
 function drawSectorLabels(state, g) {
@@ -400,13 +428,13 @@ function drawSectorLabels(state, g) {
     t.textContent = text;
     g.appendChild(t);
   }
-  // Sector midpoints in 'a'-space (see classify()): teardrop centered at a=35,
-  // parallel at a=125, direct at a=270. Convert each back to a diff usable with
-  // bearingForDiff, mirroring for non-standard (left-turn) holds.
-  function midDiffFromA(aMid) { return s === 1 ? aMid : norm360(360 - aMid); }
-  const teardropMid = midDiffFromA(35);
-  const parallelMid = midDiffFromA(125);
-  const directMid = midDiffFromA(270);
+  // Sector centers in the same mirrored angle space used by classify():
+  // Parallel 70-180 (center 125), Teardrop 180-250 (center 215),
+  // Direct 250-360 plus 0-70 (circular center 340).
+  function midDiffFromSectorAngle(angle) { return s === 1 ? angle : norm360(360 - angle); }
+  const parallelMid = midDiffFromSectorAngle(125);
+  const teardropMid = midDiffFromSectorAngle(215);
+  const directMid = midDiffFromSectorAngle(340);
   midLabel(directMid, 'D', '#ef5350');
   midLabel(teardropMid, 'T', '#34d399');
   midLabel(parallelMid, 'P', '#facc15');
@@ -415,6 +443,19 @@ function drawSectorLabels(state, g) {
 let currentState = null;
 let animStep = -1;
 let maxStep = 5;
+let animationPaused = false;
+
+function setAnimationPaused(paused) {
+  animationPaused = paused;
+  const stateLabel = document.getElementById('animationState');
+  if (paused) {
+    svg.pauseAnimations();
+    stateLabel.style.display = 'block';
+  } else {
+    svg.unpauseAnimations();
+    stateLabel.style.display = 'none';
+  }
+}
 
 function render() {
   const inbound = parseFloat(document.getElementById('inboundCourse').value) || 0;
@@ -478,7 +519,7 @@ function describeStep(state, step) {
   } else if (step === 2) {
     const trackToFix = norm360(state.arrival + 180);
     const raw = norm360(trackToFix - inbound);
-    const a = s === 1 ? raw : norm360(360 - raw);
+    const sectorAngle = s === 1 ? raw : norm360(360 - raw);
 
     function row(name, range, isMatch) {
       const arrow = isMatch ? ' ← arrival is here' : '';
@@ -486,15 +527,14 @@ function describeStep(state, step) {
       const close = isMatch ? '</b>' : '';
       return `${open}${name}: ${range}${arrow}${close}`;
     }
-    const directRange = s === 1 ? `a = raw ≥ 180°` : `a = 360°−raw ≥ 180°  (raw ≤ 180°)`;
     formulaBox.style.display = 'block';
     formulaBox.innerHTML =
       `track to fix = arrival + 180 = ${state.arrival} + 180 = ${trackToFix}°<br>` +
       `raw = track − inbound (mod 360) = ${trackToFix} − ${inbound} = ${raw}°<br>` +
-      `a (measured from outbound, mirrored for ${s === 1 ? 'standard' : 'non-standard'}) = <b>${a}°</b><br><br>` +
-      row('Teardrop', 'a &lt; 70°', state.entryType === 'teardrop') + '<br>' +
-      row('Parallel', '70° ≤ a &lt; 180°', state.entryType === 'parallel') + '<br>' +
-      row('Direct', 'a ≥ 180°', state.entryType === 'direct');
+      `sector angle (${s === 1 ? 'standard' : 'mirrored for non-standard'}) = <b>${sectorAngle}°</b><br><br>` +
+      row('Direct', 'angle &lt; 70° or angle ≥ 250°', state.entryType === 'direct') + '<br>' +
+      row('Parallel', '70° ≤ angle &lt; 180°', state.entryType === 'parallel') + '<br>' +
+      row('Teardrop', '180° ≤ angle &lt; 250°', state.entryType === 'teardrop');
   } else {
     formulaBox.style.display = 'none';
   }
@@ -521,6 +561,7 @@ function drawPlane(state, g) {
 // Idle/live preview: shown by default and refreshed instantly on every input change,
 // before "Start" is pressed. Just the racetrack + plane at the current bearing.
 function drawIdle() {
+  setAnimationPaused(false);
   const state = render();
   const old = svg.querySelector('#animLayer');
   if (old) old.remove();
@@ -539,6 +580,7 @@ function drawIdle() {
 }
 
 function animateToStep(step) {
+  setAnimationPaused(false);
   const state = currentState;
   describeStep(state, step);
 
@@ -584,8 +626,8 @@ function animateToStep(step) {
     const loopPath = el('path', { d: state.base.racetrackPath, fill: 'none', stroke: color, 'stroke-width': 4, 'stroke-dasharray': '12,7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.95 });
     g.appendChild(loopPath);
     if (step === 5) {
-      animateDraw(loopPath, '12,7', 2.4);
-      drawMovingPlane(g, state.base.racetrackPath, color, 2.4);
+      animateDraw(loopPath, '12,7', 3.6);
+      drawMovingPlane(g, state.base.racetrackPath, color, 3.6);
     } else {
       const established = planeIconAt(state.base.fix.x, state.base.fix.y, state.inbound);
       g.appendChild(established);
@@ -596,30 +638,37 @@ function animateToStep(step) {
 function buildEntryPathStr(state) {
   const fix = state.base.fix;
   const turnSign = state.isStandard ? 1 : -1;
+  const sweep = state.isStandard ? 1 : 0;
+  const approach = pointAt(fix.x, fix.y, state.arrival, 235);
   let pathStr = '';
 
   if (state.entryType === 'direct') {
-    const from = pointAt(fix.x, fix.y, state.arrival, 130);
-    pathStr = `M ${from.x} ${from.y} L ${fix.x} ${fix.y}`;
+    // Show the complete arrival to the fix, then the normal holding-direction turn
+    // onto the outbound leg. This makes the Direct entry visibly more than a straight line.
+    const { outboundNear, outboundFar, turnRadius } = state.base;
+    pathStr = `M ${approach.x} ${approach.y} L ${fix.x} ${fix.y} ` +
+      `A ${turnRadius} ${turnRadius} 0 0 ${sweep} ${outboundNear.x} ${outboundNear.y} ` +
+      `L ${outboundFar.x} ${outboundFar.y}`;
   } else if (state.entryType === 'teardrop') {
-    // Fly outbound on the teardrop track, then loop/turn back to intercept the inbound course —
-    // drawn as a real curved loop (not a straight there-and-back) so it visibly reads as a teardrop shape.
-    // The protected/holding side sits at inbound + 90*turnSign (same convention used for the
-    // racetrack curve direction in drawBase). The teardrop offset must rotate FROM outbound
-    // TOWARD that side, which is the opposite sign: outbound − 30*turnSign, not + .
+    // Cross the fix, fly 30° from outbound into the holding side, make the normal
+    // holding-direction turn, intercept the inbound extension, then fly inbound to the fix.
     const teardropTrack = norm360(state.outbound - 30 * turnSign);
-    const out = pointAt(fix.x, fix.y, teardropTrack, 140);
-    // The curve's bulge direction is purely cosmetic (doesn't affect the procedural track) —
-    // swing it away from the racetrack outline so the loop stays visually distinct.
-    const loopControl = pointAt(out.x, out.y, norm360(teardropTrack + 110 * turnSign), 95);
-    pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} Q ${loopControl.x} ${loopControl.y} ${fix.x} ${fix.y}`;
+    const out = pointAt(fix.x, fix.y, teardropTrack, 145);
+    const intercept = pointAt(fix.x, fix.y, state.outbound, 55);
+    const turnRadius = 55;
+    pathStr = `M ${approach.x} ${approach.y} L ${fix.x} ${fix.y} ` +
+      `L ${out.x} ${out.y} A ${turnRadius} ${turnRadius} 0 0 ${sweep} ${intercept.x} ${intercept.y} ` +
+      `L ${fix.x} ${fix.y}`;
   } else { // parallel
-    // Reference depiction: aircraft flies outbound hugging the same axis as the outbound course
-    // (not offset onto a separate far-away line), then a single smooth curved hook loops back
-    // to intercept the fix — a continuous curve, not a sharp-cornered polygon.
-    const out = pointAt(fix.x, fix.y, state.outbound, 100);
-    const loopControl = pointAt(out.x, out.y, norm360(state.inbound + 90 * turnSign), 90);
-    pathStr = `M ${fix.x} ${fix.y} L ${out.x} ${out.y} Q ${loopControl.x} ${loopControl.y} ${fix.x} ${fix.y}`;
+    // Cross the fix, fly the outbound course on the non-holding side, then turn in the
+    // holding direction through about 225°. The large arc ends on the inbound extension;
+    // the final straight segment therefore reaches the fix exactly on the inbound course.
+    const out = pointAt(fix.x, fix.y, state.outbound, 155);
+    const intercept = pointAt(fix.x, fix.y, state.outbound, 30);
+    const turnRadius = 68;
+    pathStr = `M ${approach.x} ${approach.y} L ${fix.x} ${fix.y} ` +
+      `L ${out.x} ${out.y} A ${turnRadius} ${turnRadius} 0 1 ${sweep} ${intercept.x} ${intercept.y} ` +
+      `L ${fix.x} ${fix.y}`;
   }
   return pathStr;
 }
@@ -629,7 +678,7 @@ function buildEntryPathStr(state) {
 function drawMovingPlane(g, pathStr, color, duration) {
   const movingPlane = el('g', { id: 'movingPlane' });
   const oriented = el('g', { transform: 'rotate(90) scale(1.8)' });
-  oriented.appendChild(el('path', { d: PLANE_PATH, fill: color, stroke: '#fff', 'stroke-width': 1.4, 'stroke-linejoin': 'round' }));
+  oriented.appendChild(el('path', { d: PLANE_PATH, transform: PLANE_SHAPE_TRANSFORM, fill: color, stroke: '#fff', 'stroke-width': 1.1, 'stroke-linejoin': 'round' }));
   movingPlane.appendChild(oriented);
   const motion = el('animateMotion', { dur: `${duration}s`, repeatCount: '1', rotate: 'auto', fill: 'freeze', path: pathStr });
   movingPlane.appendChild(motion);
@@ -648,8 +697,9 @@ function drawEntryPath(state, g, animate) {
     const existingPlane = g.querySelector('#planeIcon');
     if (existingPlane) existingPlane.remove();
 
-    animateDraw(path, '12,7', 1.8);
-    drawMovingPlane(g, pathStr, color, 1.8);
+    const duration = { direct: 2.6, teardrop: 3.4, parallel: 3.8 }[state.entryType];
+    animateDraw(path, '12,7', duration);
+    drawMovingPlane(g, pathStr, color, duration);
   }
 }
 
@@ -663,6 +713,11 @@ document.querySelectorAll('.toggle-btn').forEach(btn => {
 
 document.getElementById('inboundCourse').addEventListener('input', drawIdle);
 document.getElementById('arrivalBearing').addEventListener('input', drawIdle);
+
+svg.addEventListener('click', () => {
+  if (animStep < 0) return;
+  setAnimationPaused(!animationPaused);
+});
 
 document.getElementById('startBtn').addEventListener('click', () => {
   animStep = 0;
