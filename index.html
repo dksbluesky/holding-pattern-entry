@@ -230,6 +230,7 @@
   <div id="notesBody" style="display:none; margin-top:10px; font-size:13px; color:#475569; line-height:1.7;">
     <b>Wind correction:</b> this diagram ignores wind. In real flying, after entering the hold, triple the inbound drift correction angle on the outbound leg to keep from drifting outside protected airspace.<br><br>
     <b>HSI course pointer:</b> the 20° tilt shortcut only works if the course pointer is set to the <i>inbound</i> course. If you're in the habit of setting it to outbound, this sector picture will be backwards — double check before using it.<br><br>
+    <b>10° entry buffer:</b> if the arrival is within 10° of a sector boundary, either adjacent entry may be used. The app still highlights the sector containing the exact entered bearing, but Step 3 will identify both acceptable choices.<br><br>
     <b>Timing vs. DME:</b> if timing the outbound leg, start the clock when abeam the fix (when the TO/FROM indicator flips, or wings level after the turn) — not at fix crossing. If using DME instead, the turn point is purely distance-based, not time-based.
   </div>
 </div>
@@ -353,6 +354,19 @@ function classify(inbound, arrival, isStandard) {
   return 'teardrop';
 }
 
+function entryBuffer(inbound, arrival, isStandard) {
+  const s = isStandard ? 1 : -1;
+  const trackToFix = norm360(arrival + 180);
+  const raw = norm360(trackToFix - inbound);
+  const angle = s === 1 ? raw : norm360(360 - raw);
+  const boundaries = [
+    { angle: 70, entries: ['direct', 'parallel'] },
+    { angle: 180, entries: ['parallel', 'teardrop'] },
+    { angle: 250, entries: ['teardrop', 'direct'] }
+  ];
+  return boundaries.find(boundary => Math.abs(angle - boundary.angle) <= 10) || null;
+}
+
 // Convert a track-space dial value to a real drawing bearing: the wedge is drawn where the
 // aircraft would physically sit (the reciprocal of the track), hence +180.
 function bearingForDiff(inbound, diff) { return norm360(inbound + diff + 180); }
@@ -469,6 +483,7 @@ function render() {
 
   const entryType = classify(inbound, arrival, isStandard);
   state.entryType = entryType;
+  state.buffer = entryBuffer(inbound, arrival, isStandard);
   state.base = base;
 
   return state;
@@ -484,7 +499,7 @@ function describeStep(state, step) {
   const steps = [
     { t: 'STEP 1 — Boundary Line 1', d: 'HSI shortcut: set the course pointer to the inbound course, then tilt the 9-3 line 20° toward the turn side. This line starts at the fix and bounds the 180°-wide Direct sector.' },
     { t: 'STEP 2 — Boundary Line 2', d: 'A second ray, drawn outward from the fix along the outbound course, splits the remaining space into a 70° Teardrop sector and a 110° Parallel sector.' },
-    { t: 'STEP 3 — Sector Identified', d: `Aircraft is positioned at the ${state.arrival}° radial from the fix (flying a track of ${norm360(state.arrival + 180)}° to reach it) — this falls in the ${state.entryType.toUpperCase()} sector.` },
+    { t: 'STEP 3 — Sector Identified', d: `Aircraft is positioned at the ${state.arrival}° radial from the fix (flying a track of ${norm360(state.arrival + 180)}° to reach it) — this falls in the ${state.entryType.toUpperCase()} sector.${state.buffer ? ` It is within the 10° buffer at a sector boundary, so either ${state.buffer.entries[0].toUpperCase()} or ${state.buffer.entries[1].toUpperCase()} is acceptable.` : ''}` },
     { t: 'STEP 4 — Entry Maneuver', d: entryDescription(state.entryType, state.isStandard) },
     { t: 'STEP 5 — Established', d: 'Aircraft is now established inbound on the holding course, flying the racetrack pattern.' },
     { t: 'STEP 6 — Complete the Loop', d: 'Aircraft flies the full racetrack — outbound leg, turn, inbound leg, back to the fix — completing the first full circuit of the hold.' },
@@ -534,7 +549,8 @@ function describeStep(state, step) {
       `sector angle (${s === 1 ? 'standard' : 'mirrored for non-standard'}) = <b>${sectorAngle}°</b><br><br>` +
       row('Direct', 'angle &lt; 70° or angle ≥ 250°', state.entryType === 'direct') + '<br>' +
       row('Parallel', '70° ≤ angle &lt; 180°', state.entryType === 'parallel') + '<br>' +
-      row('Teardrop', '180° ≤ angle &lt; 250°', state.entryType === 'teardrop');
+      row('Teardrop', '180° ≤ angle &lt; 250°', state.entryType === 'teardrop') +
+      (state.buffer ? `<br><br><b>10° buffer:</b> ${state.buffer.entries[0].toUpperCase()} or ${state.buffer.entries[1].toUpperCase()} may be used.` : '');
   } else {
     formulaBox.style.display = 'none';
   }
