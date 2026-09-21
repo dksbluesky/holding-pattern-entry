@@ -543,8 +543,9 @@ function describeStep(state, step) {
 function entryDescription(type, isStandard) {
   const side = isStandard ? 'right' : 'left';
   if (type === 'direct') return `Aircraft flies directly to the fix and turns ${side} into the outbound leg, joining the pattern immediately.`;
-  if (type === 'teardrop') return `Aircraft crosses the fix, then flies a heading 30° off the OUTBOUND course (angled INTO the protected area, not straight out) for about 1 minute. It then makes a ${side} turn and flies back to intercept the inbound course at the fix.`;
-  return `Aircraft crosses the fix, flies outbound parallel to the inbound course (opposite direction) for about 1 minute OUTSIDE the protected area, then turns ${side} (more than 180°) to intercept the inbound course.`;
+  if (type === 'teardrop') return `Aircraft crosses the fix, then flies a heading 30° off the OUTBOUND course (angled INTO the protected area) for about 1 minute. It then makes a ${side} turn, intercepts the inbound course, and follows it back to the fix.`;
+  const parallelTurn = isStandard ? 'left' : 'right';
+  return `Aircraft crosses the fix, establishes a separate outbound leg on the NON-HOLDING side for about 1 minute, then turns ${parallelTurn} toward the holding side (more than 180°) to intercept the inbound course and return to the fix.`;
 }
 
 function drawPlane(state, g) {
@@ -650,24 +651,41 @@ function buildEntryPathStr(state) {
       `A ${turnRadius} ${turnRadius} 0 0 ${sweep} ${outboundNear.x} ${outboundNear.y} ` +
       `L ${outboundFar.x} ${outboundFar.y}`;
   } else if (state.entryType === 'teardrop') {
-    // Cross the fix, fly 30° from outbound into the holding side, make the normal
-    // holding-direction turn, intercept the inbound extension, then fly inbound to the fix.
+    // Cross the fix, fly a full 30° offset leg inside the holding side, then make
+    // the large holding-direction turn needed to intercept the inbound course.
     const teardropTrack = norm360(state.outbound - 30 * turnSign);
-    const out = pointAt(fix.x, fix.y, teardropTrack, 145);
-    const intercept = pointAt(fix.x, fix.y, state.outbound, 55);
-    const turnRadius = 55;
+    const out = pointAt(fix.x, fix.y, teardropTrack, 155);
+    const intercept = pointAt(fix.x, fix.y, state.outbound, 78);
+    // Keep the return loop at approximately the racetrack turn scale. A larger
+    // radius makes the teardrop bulge outside the holding pattern visually.
+    const turnRadius = 42;
+    const turnCenter = pointAt(out.x, out.y, norm360(teardropTrack + 90 * turnSign), turnRadius);
+    const startRadial = norm360(teardropTrack - 90 * turnSign);
+    const turnEnd = pointAt(turnCenter.x, turnCenter.y, norm360(startRadial + 210 * turnSign), turnRadius);
     pathStr = `M ${approach.x} ${approach.y} L ${fix.x} ${fix.y} ` +
-      `L ${out.x} ${out.y} A ${turnRadius} ${turnRadius} 0 0 ${sweep} ${intercept.x} ${intercept.y} ` +
+      `L ${out.x} ${out.y} A ${turnRadius} ${turnRadius} 0 1 ${sweep} ${turnEnd.x} ${turnEnd.y} ` +
+      `L ${intercept.x} ${intercept.y} ` +
       `L ${fix.x} ${fix.y}`;
   } else { // parallel
-    // Cross the fix, fly the outbound course on the non-holding side, then turn in the
-    // holding direction through about 225°. The large arc ends on the inbound extension;
-    // the final straight segment therefore reaches the fix exactly on the inbound course.
-    const out = pointAt(fix.x, fix.y, state.outbound, 155);
-    const intercept = pointAt(fix.x, fix.y, state.outbound, 30);
-    const turnRadius = 68;
+    // Cross the fix and establish a visibly separate outbound leg on the non-holding
+    // side. The return turn then curls INTO the racetrack/holding side (rather than
+    // continuing farther outside), before intercepting the inbound course.
+    const nonHoldingBearing = norm360(state.inbound - 90 * turnSign);
+    const offsetOrigin = pointAt(fix.x, fix.y, nonHoldingBearing, 24);
+    const near = pointAt(offsetOrigin.x, offsetOrigin.y, state.outbound, 32);
+    const out = pointAt(offsetOrigin.x, offsetOrigin.y, state.outbound, 158);
+    const intercept = pointAt(fix.x, fix.y, state.outbound, 82);
+    const transitionControl = pointAt(fix.x, fix.y, state.outbound, 22);
+    const parallelTurnSign = -turnSign;
+    const parallelSweep = state.isStandard ? 0 : 1;
+    const turnRadius = 42;
+    const turnCenter = pointAt(out.x, out.y, norm360(state.outbound + 90 * parallelTurnSign), turnRadius);
+    const startRadial = norm360(state.outbound - 90 * parallelTurnSign);
+    const turnEnd = pointAt(turnCenter.x, turnCenter.y, norm360(startRadial + 200 * parallelTurnSign), turnRadius);
     pathStr = `M ${approach.x} ${approach.y} L ${fix.x} ${fix.y} ` +
-      `L ${out.x} ${out.y} A ${turnRadius} ${turnRadius} 0 1 ${sweep} ${intercept.x} ${intercept.y} ` +
+      `Q ${transitionControl.x} ${transitionControl.y} ${near.x} ${near.y} ` +
+      `L ${out.x} ${out.y} A ${turnRadius} ${turnRadius} 0 1 ${parallelSweep} ${turnEnd.x} ${turnEnd.y} ` +
+      `L ${intercept.x} ${intercept.y} ` +
       `L ${fix.x} ${fix.y}`;
   }
   return pathStr;
